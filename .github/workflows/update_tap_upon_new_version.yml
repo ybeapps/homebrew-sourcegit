@@ -52,4 +52,4 @@ jobs:
         # TODO: replace "ybeapps/homebrew-sourcegit" with "sourcegit-scm/homebrew-sourcegit" in two places
         run: |
           brew tap ybeapps/homebrew-sourcegit
-          brew bump-cask-pr --dry-run --no-fork --version $VERSION --no-browse --message "Update SourceGit to version $VERSION" --no-pull-request sourcegit --tap ybeapps/homebrew-sourcegit
+          brew bump-cask-pr --dry-run --no-fork --version $VERSION --no-browse --message "Update SourceGit to version $VERSION" sourcegit --tap ybeapps/homebrew-sourcegit
