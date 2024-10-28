@@ -19,7 +19,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          curl -sL -H "Authorization: token $GITHUB_TOKEN" https://api.github.com/repos/sourcegit-scm/sourcegit/releases/latest
+          # curl -sL -H "Authorization: token $GITHUB_TOKEN" https://api.github.com/repos/sourcegit-scm/sourcegit/releases/latest
           # curl -sL https://api.github.com/repos/sourcegit-scm/sourcegit/releases/latest | jq -r ".tag_name" | cut -d v -f 2
           
           latest_version=$(curl -sL -H "Authorization: token $GITHUB_TOKEN" https://api.github.com/repos/sourcegit-scm/sourcegit/releases/latest | jq -r ".tag_name" | cut -d v -f 2)
@@ -50,7 +50,6 @@ jobs:
         if: env.new_version_found == 'true'
         env:
           VERSION: ${{ env.latest_version }}
-          # GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
           HOMEBREW_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         id: homebrew-releaser
 
