@@ -53,6 +53,8 @@ jobs:
         # TODO: replace "ybeapps/homebrew-sourcegit" with "sourcegit-scm/homebrew-sourcegit"
         run: |
           brew tap ybeapps/homebrew-sourcegit
-          brew bump-cask-pr --no-fork --version $VERSION --no-browse --message "Update SourceGit to version $VERSION" sourcegit
+          brew bump-cask-pr --no-fork --version $VERSION --no-browse --message "Update SourceGit to version $VERSION" --write-only --commit sourcegit
+          git remote add local-other /opt/homebrew/Library/Taps/ybeapps/homebrew-sourcegit
+          git fetch local-other
           git status
           git push
