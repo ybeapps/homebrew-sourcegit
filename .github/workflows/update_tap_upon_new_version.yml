@@ -13,6 +13,8 @@ jobs:
       
       - name: Fetch latest release version
         id: fetch_version
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           # curl -sL https://api.github.com/repos/sourcegit-scm/sourcegit/releases/latest
           # curl -sL https://api.github.com/repos/sourcegit-scm/sourcegit/releases/latest | jq -r ".tag_name" | cut -d v -f 2
@@ -45,10 +47,12 @@ jobs:
         if: env.new_version_found == 'true'
         env:
           VERSION: ${{ env.latest_version }}
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
         id: homebrew-releaser
 
         # TODO: replace "ybeapps/homebrew-sourcegit" with "sourcegit-scm/homebrew-sourcegit"
         run: |
           brew tap ybeapps/homebrew-sourcegit
           brew bump-cask-pr --no-fork --version $VERSION --no-browse --message "Update SourceGit to version $VERSION" --write-only --commit sourcegit
+          git status
           git push
