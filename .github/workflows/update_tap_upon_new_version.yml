@@ -7,10 +7,6 @@ on:
 jobs:
   osx-app-to-homebrew:
     runs-on: macos-latest
-    
-    strategy:
-      matrix:
-        runtime: [osx-x64, osx-arm64]
         
     steps:
       - uses: actions/checkout@v2
@@ -48,7 +44,6 @@ jobs:
         if: env.new_version_found == 'true'
         env:
           VERSION: ${{ env.latest_version }}
-          RUNTIME: ${{ matrix.runtime }}
         id: homebrew-releaser
 
         # TODO: replace "ybeapps/homebrew-sourcegit" with "sourcegit-scm/homebrew-sourcegit"
