@@ -20,8 +20,8 @@ jobs:
         id: fetch_version
         run: |
           curl -sL https://api.github.com/repos/sourcegit-scm/sourcegit/releases/latest
-          curl -sL https://api.github.com/repos/sourcegit-scm/sourcegit/releases/latest | jq -r ".tag_name"
-          latest_version=$(curl -sL https://api.github.com/repos/sourcegit-scm/sourcegit/releases/latest | jq -r ".tag_name")
+          curl -sL https://api.github.com/repos/sourcegit-scm/sourcegit/releases/latest | jq -r ".tag_name" | cut -d v -f 2
+          latest_version=$(curl -sL https://api.github.com/repos/sourcegit-scm/sourcegit/releases/latest | jq -r ".tag_name" | cut -d v -f 2)
           if [ -z "$latest_version" ]; then
             echo "Failed to fetch latest version from GitHub API."
             exit 1
