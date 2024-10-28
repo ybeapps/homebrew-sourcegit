@@ -1,0 +1,55 @@
+name: Get latest release sourcegit version
+on:
+  workflow_dispatch
+  
+  schedule:
+    - cron:  '0 10/12 * * *'
+jobs:
+  osx-app-to-homebrew:
+    runs-on: macos-latest
+    
+    strategy:
+      matrix:
+        runtime: [osx-x64, osx-arm64]
+        
+    steps:
+      - uses: actions/checkout@v2
+      
+      - name: Fetch latest release version
+        id: fetch_version
+        run: |
+          latest_version=$(curl -sL https://api.github.com/repos/sourcegit-scm/sourcegit/releases/latest | jq -r ".tag_name")
+          if [ -z "$latest_version" ]; then
+            echo "Failed to fetch latest version from GitHub API."
+            exit 1
+          fi
+          echo "latest_version=$latest_version" >> $GITHUB_ENV
+
+      - name: Get current version from sourcegit.rb
+        id: current_version
+        run: |
+          current_version=$(grep 'version ' ./Casks/sourcegit.rb | cut -d '"' -f 2)
+          echo "current_version=$current_version" >> $GITHUB_ENV
+          
+      - name: Compare versions
+        id: version_check
+        run: |
+          if [ "$latest_version" != "$current_version" ]; then
+            echo "Versions differ. Proceeding with action."
+            echo "new_version_found=true" >> $GITHUB_ENV
+          else
+            echo "Versions are the same. No action needed."
+            echo "new_version_found=false" >> $GITHUB_ENV
+          fi
+        
+      - name: Release to Homebrew Private Tap
+        if: env.new_version_found == 'true'
+        env:
+          VERSION: ${{ latest_version }}
+          RUNTIME: ${{ matrix.runtime }}
+        id: homebrew-releaser
+
+        # TODO: replace "ybeapps/homebrew-sourcegit" with "sourcegit-scm/homebrew-sourcegit" in two places
+        run: |
+          brew tap ybeapps/homebrew-sourcegit
+          brew bump-cask-pr --dry-run --no-fork --version $VERSION --no-browse --message "Update SourceGit to version $VERSION" --no-pull-request sourcegit --tap ybeapps/homebrew-sourcegit
