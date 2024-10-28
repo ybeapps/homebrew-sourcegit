@@ -48,7 +48,7 @@ jobs:
       - name: Release to Homebrew Private Tap
         if: env.new_version_found == 'true'
         env:
-          VERSION: $latest_version
+          VERSION: "$latest_version"
           RUNTIME: ${{ matrix.runtime }}
         id: homebrew-releaser
 
