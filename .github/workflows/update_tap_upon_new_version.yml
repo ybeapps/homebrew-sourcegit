@@ -10,8 +10,7 @@ jobs:
     
     strategy:
       matrix:
-        # runtime: [osx-x64, osx-arm64]
-        runtime: [osx-arm64]
+        runtime: [osx-x64, osx-arm64]
         
     steps:
       - uses: actions/checkout@v2
@@ -55,4 +54,4 @@ jobs:
         # TODO: replace "ybeapps/homebrew-sourcegit" with "sourcegit-scm/homebrew-sourcegit"
         run: |
           brew tap ybeapps/homebrew-sourcegit
-          brew bump-cask-pr --dry-run --no-fork --version $VERSION --no-browse --message "Update SourceGit to version $VERSION" --write-only --commit sourcegit
+          brew bump-cask-pr --no-fork --version $VERSION --no-browse --message "Update SourceGit to version $VERSION" --write-only --commit sourcegit
