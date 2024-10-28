@@ -57,5 +57,6 @@ jobs:
           brew bump-cask-pr --no-fork --version $VERSION --no-browse --message "Update SourceGit to version $VERSION" --write-only --commit sourcegit
           git remote add local-other /opt/homebrew/Library/Taps/ybeapps/homebrew-sourcegit
           git fetch local-other
+          git reset --hard local-other/main
           git status
-          git push
+          git push origin
