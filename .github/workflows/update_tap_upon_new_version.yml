@@ -10,7 +10,8 @@ jobs:
     
     strategy:
       matrix:
-        runtime: [osx-x64, osx-arm64]
+        # runtime: [osx-x64, osx-arm64]
+        runtime: [osx-arm64]
         
     steps:
       - uses: actions/checkout@v2
@@ -18,6 +19,8 @@ jobs:
       - name: Fetch latest release version
         id: fetch_version
         run: |
+          curl -sL https://api.github.com/repos/sourcegit-scm/sourcegit/releases/latest
+          curl -sL https://api.github.com/repos/sourcegit-scm/sourcegit/releases/latest | jq -r ".tag_name"
           latest_version=$(curl -sL https://api.github.com/repos/sourcegit-scm/sourcegit/releases/latest | jq -r ".tag_name")
           if [ -z "$latest_version" ]; then
             echo "Failed to fetch latest version from GitHub API."
