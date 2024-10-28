@@ -9,6 +9,9 @@ jobs:
     runs-on: macos-latest
         
     steps:
+      - env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        
       - uses: actions/checkout@v2
       
       - name: Fetch latest release version
@@ -47,8 +50,8 @@ jobs:
         if: env.new_version_found == 'true'
         env:
           VERSION: ${{ env.latest_version }}
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
-          HOMEBREW_GITHUB_API_TOKEN: ${{ secrets.GH_TOKEN }}
+          # GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+          HOMEBREW_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         id: homebrew-releaser
 
         # TODO: replace "ybeapps/homebrew-sourcegit" with "sourcegit-scm/homebrew-sourcegit"
