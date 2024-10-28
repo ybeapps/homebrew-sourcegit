@@ -2,10 +2,10 @@
 
 This repository provides a Homebrew Cask for installing SourceGit.
 
-Run the following command to add the `sourcegit-scm/sourcegit` tap to your Homebrew:
+Run the following command to add the `ybeapps/sourcegit` tap to your Homebrew:
 
 ```shell
-brew tap ChiahongHong/sourcegit
+brew tap ybeapps/sourcegit
 # brew tap sourcegit-scm/sourcegit
 ```
 
