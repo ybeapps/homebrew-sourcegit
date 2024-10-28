@@ -49,7 +49,7 @@ jobs:
           RUNTIME: ${{ matrix.runtime }}
         id: homebrew-releaser
 
-        # TODO: replace "ybeapps/homebrew-sourcegit" with "sourcegit-scm/homebrew-sourcegit" in two places
+        # TODO: replace "ybeapps/homebrew-sourcegit" with "sourcegit-scm/homebrew-sourcegit"
         run: |
           brew tap ybeapps/homebrew-sourcegit
-          brew bump-cask-pr --dry-run --no-fork --version $VERSION --no-browse --message "Update SourceGit to version $VERSION" sourcegit --tap ybeapps/homebrew-sourcegit
+          brew bump-cask-pr --dry-run --no-fork --version $VERSION --no-browse --message "Update SourceGit to version $VERSION" --write-only --commit sourcegit
