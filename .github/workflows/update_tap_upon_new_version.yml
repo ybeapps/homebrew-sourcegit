@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
   
   schedule:
-    - cron:  '0 10/6 * * *'
+    - cron:  '0 0,6,12,18 * * *'
 jobs:
   osx-app-to-homebrew:
     runs-on: macos-latest
