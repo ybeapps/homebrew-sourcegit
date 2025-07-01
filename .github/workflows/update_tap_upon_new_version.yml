@@ -80,10 +80,10 @@ jobs:
           echo "=== Post-fetch Debug ==="
           git status
           git log --oneline -3
-          git log --oneline -3 local-other/mainAdd
+          git log --oneline -3 local-other/main
           echo
           
-          git reset --hard local-other/mainAdd
+          git reset --hard local-other/main
           git status
           git push origin
           git push origin main
