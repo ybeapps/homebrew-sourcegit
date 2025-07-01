@@ -55,11 +55,22 @@ jobs:
 
         # TODO: replace "ybeapps/homebrew-sourcegit" with "sourcegit-scm/homebrew-sourcegit"
         run: |
+          echo "=== Adding tap ==="
           brew tap ybeapps/homebrew-sourcegit
-          
+
+          TAP_REPO=$(brew --repository ybeapps/homebrew-sourcegit)
+          echo "Tap repository: $TAP_REPO"
+
+          echo "=== Bumping cask ==="
           brew bump-cask-pr --no-fork --version $VERSION --no-browse --message "Update SourceGit to version $VERSION" --write-only --commit sourcegit
 
-          cd "$(brew --repository ybeapps/homebrew-sourcegit)"
+          cd "$TAP_REPO"
+
+          # Commit the changes in tap repo
+          echo "=== Committing in tap repo ==="
+          git add Casks/sourcegit.rb
+          git commit -m "Update SourceGit to version $VERSION"
+          
           echo "=== Commit Debug ==="
           echo "Git status after bump:"
           git status
@@ -72,27 +83,14 @@ jobs:
           echo "Untracked files:"
           git ls-files --others --exclude-standard
           echo
+
+          cd - # Go back to original directory
           
-          git remote add local-other $(brew --repository ybeapps/homebrew-sourcegit)
+          git remote add local-other "$TAP_REPO"
           git fetch local-other
-
-          # Debug: Show all branches after fetch
-          echo "=== Branch Debug ==="
-          echo "Local branches:"
-          git branch -v
-          echo "Remote branches:"
-          git branch -r -v
-          echo "All branches:"
-          git branch -a -v
-          echo
-
-          # echo "=== Post-fetch Debug ==="
-          git status
-          git log --oneline -3
-          git log --oneline -3 local-other/main
-          echo
-          
           git reset --hard local-other/main
+          
           git status
+          
           git push origin
           git push origin main
