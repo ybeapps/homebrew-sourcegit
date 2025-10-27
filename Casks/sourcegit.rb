@@ -11,7 +11,7 @@ cask "sourcegit" do
   desc "Open-source Git GUI client"
   homepage "https://sourcegit-scm.github.io/"
 
-  depends_on macos: ">= :catalina"
+  depends_on macos: ">= :big_sur"
 
   app "SourceGit.app"
 
