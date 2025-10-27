@@ -69,7 +69,12 @@ jobs:
           # Commit the changes in tap repo
           echo "=== Committing in tap repo ==="
           git add Casks/sourcegit.rb
-          git commit -m "Update SourceGit to version $VERSION"
+
+          if git diff --cached --quiet; then
+            echo "⚠️ No changes to commit"
+          else
+            git commit -m "Update SourceGit to version $VERSION"
+          fi
           
           echo "=== Commit Debug ==="
           echo "Git status after bump:"
