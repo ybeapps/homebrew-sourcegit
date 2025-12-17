@@ -404,6 +404,8 @@ jobs:
           git reset --hard local-other/main
           
           echo "=== Final push ==="
+          git status
+          git push origin
           git push origin main
           
           echo "✅ Successfully updated homebrew tap!"
