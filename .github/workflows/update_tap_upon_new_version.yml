@@ -7,6 +7,11 @@ on:
       version:
         description: 'SourceGit version (e.g., v8.40) - leave empty for latest'
         required: false
+      force_update:
+        description: 'Force update even if version is the same'
+        required: false
+        type: boolean
+        default: false
   
   # Check 4x daily (same as your old workflow)
   schedule:
@@ -70,12 +75,17 @@ jobs:
         run: |
           LATEST="${{ steps.fetch_version.outputs.version_num }}"
           CURRENT="${{ steps.current_version.outputs.current_version }}"
+          FORCE="${{ github.event.inputs.force_update }}"
           
-          if [ "$LATEST" != "$CURRENT" ]; then
+          if [ "$FORCE" == "true" ]; then
+            echo "🔨 Force update enabled. Proceeding regardless of version."
+            echo "should_update=true" >> $GITHUB_OUTPUT
+          elif [ "$LATEST" != "$CURRENT" ]; then
             echo "✅ Versions differ ($CURRENT → $LATEST). Proceeding with signing."
             echo "should_update=true" >> $GITHUB_OUTPUT
           else
             echo "✨ Versions are the same ($CURRENT). No action needed."
+            echo "💡 Use 'Force update' checkbox to update anyway."
             echo "should_update=false" >> $GITHUB_OUTPUT
           fi
       
@@ -87,13 +97,35 @@ jobs:
         if: steps.version_check.outputs.should_update == 'true'
         run: |
           VERSION="${{ steps.fetch_version.outputs.version }}"
+          FORCE="${{ github.event.inputs.force_update }}"
           
-          if gh release view "${VERSION}-signed" &>/dev/null; then
+          if [ "$FORCE" == "true" ]; then
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "🔨 Force update: Will re-sign even if release exists"
+          elif gh release view "${VERSION}-signed" &>/dev/null; then
             echo "exists=true" >> $GITHUB_OUTPUT
             echo "✅ Version ${VERSION} already signed"
           else
             echo "exists=false" >> $GITHUB_OUTPUT
             echo "🔨 Version ${VERSION} needs signing"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      # ============================================
+      # DELETE OLD RELEASE IF FORCE UPDATE
+      # ============================================
+      - name: Delete old signed release (force update)
+        if: steps.version_check.outputs.should_update == 'true' && github.event.inputs.force_update == 'true'
+        run: |
+          VERSION="${{ steps.fetch_version.outputs.version }}"
+          
+          if gh release view "${VERSION}-signed" &>/dev/null; then
+            echo "🗑️  Deleting existing signed release..."
+            gh release delete "${VERSION}-signed" --yes --cleanup-tag
+            echo "✅ Old release deleted"
+          else
+            echo "ℹ️  No existing release to delete"
           fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
