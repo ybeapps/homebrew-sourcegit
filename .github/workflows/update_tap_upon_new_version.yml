@@ -140,11 +140,23 @@ jobs:
           VERSION_NUM="${{ steps.fetch_version.outputs.version_num }}"
           
           echo "📥 Downloading SourceGit ${VERSION}..."
-          curl -L -o sourcegit.tar.gz \
-            "https://github.com/sourcegit-scm/sourcegit/releases/download/${VERSION}/sourcegit_${VERSION_NUM}_osx-x64.tar.gz"
           
-          tar -xzf sourcegit.tar.gz
+          # Download the ARM64 version (works on Apple Silicon and Intel via Rosetta)
+          curl -L -o sourcegit.zip \
+            "https://github.com/sourcegit-scm/sourcegit/releases/download/${VERSION}/sourcegit_${VERSION_NUM}.osx-arm64.zip"
+          
+          # Extract
+          unzip -q sourcegit.zip
+          
           ls -la
+          
+          if [ ! -d "SourceGit.app" ]; then
+            echo "❌ SourceGit.app not found after extraction"
+            ls -la
+            exit 1
+          fi
+          
+          echo "✅ SourceGit.app extracted and ready for signing"
       
       - name: Import signing certificate
         if: steps.version_check.outputs.should_update == 'true' && steps.check_signed.outputs.exists == 'false'
