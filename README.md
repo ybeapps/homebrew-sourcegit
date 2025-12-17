@@ -12,4 +12,5 @@ brew install --cask sourcegit
 # brew tap sourcegit-scm/sourcegit
 ```
 
-Source Code of SourceGit can be found here: https://github.com/sourcegit-scm/sourcegit
+
+Source Code of SourceGit can be found here: [SourceGit repo](https://github.com/sourcegit-scm/sourcegit)
