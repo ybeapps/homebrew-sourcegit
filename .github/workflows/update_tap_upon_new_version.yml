@@ -1,79 +1,393 @@
-name: Get latest release sourcegit version
+name: Auto Sign and Update SourceGit
+
 on:
+  # Manual trigger
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'SourceGit version (e.g., v8.40) - leave empty for latest'
+        required: false
+      force_update:
+        description: 'Force update even if version is the same'
+        required: false
+        type: boolean
+        default: false
   
+  # Check 4x daily (same as your old workflow)
   schedule:
-    - cron:  '0 0,6,12,18 * * *'
+    - cron: '0 0,6,12,18 * * *'
+
 jobs:
-  osx-app-to-homebrew:
+  check-and-sign:
     runs-on: macos-latest
-        
+    
     steps:
-        
-      - uses: actions/checkout@v2
+      - name: Checkout tap repo
+        uses: actions/checkout@v4
         with:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GH_TOKEN }}
       
+      # ============================================
+      # VERSION DETECTION (from old workflow)
+      # ============================================
       - name: Fetch latest release version
         id: fetch_version
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # curl -sL -H "Authorization: token $GITHUB_TOKEN" https://api.github.com/repos/sourcegit-scm/sourcegit/releases/latest
-          # curl -sL https://api.github.com/repos/sourcegit-scm/sourcegit/releases/latest | jq -r ".tag_name" | cut -d v -f 2
-          
-          latest_version=$(curl -sL -H "Authorization: token $GITHUB_TOKEN" https://api.github.com/repos/sourcegit-scm/sourcegit/releases/latest | jq -r ".tag_name" | cut -d v -f 2)
-          if [ -z "$latest_version" ] || [ "$latest_version" == "null" ]; then
-            echo "Failed to fetch latest version from GitHub API."
-            exit 1
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            # Manual trigger with specific version
+            VERSION="${{ github.event.inputs.version }}"
+            VERSION_NUM="${VERSION#v}"
+          else
+            # Auto-detect latest version (scheduled run)
+            latest_version=$(curl -sL -H "Authorization: token $GITHUB_TOKEN" \
+              https://api.github.com/repos/sourcegit-scm/sourcegit/releases/latest | \
+              jq -r ".tag_name")
+            
+            if [ -z "$latest_version" ] || [ "$latest_version" == "null" ]; then
+              echo "❌ Failed to fetch latest version from GitHub API."
+              exit 1
+            fi
+            
+            VERSION="$latest_version"
+            VERSION_NUM="${latest_version#v}"
           fi
-          echo "latest_version=$latest_version" >> $GITHUB_ENV
-
+          
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "version_num=$VERSION_NUM" >> $GITHUB_OUTPUT
+          echo "✅ Target version: $VERSION ($VERSION_NUM)"
+      
       - name: Get current version from sourcegit.rb
         id: current_version
         run: |
-          current_version=$(grep 'version ' ./Casks/sourcegit.rb | cut -d '"' -f 2)
-          echo "current_version=$current_version" >> $GITHUB_ENV
-          
+          if [ -f "./Casks/sourcegit.rb" ]; then
+            current_version=$(grep 'version ' ./Casks/sourcegit.rb | cut -d '"' -f 2)
+            echo "current_version=$current_version" >> $GITHUB_OUTPUT
+            echo "📦 Current version in cask: $current_version"
+          else
+            echo "current_version=" >> $GITHUB_OUTPUT
+            echo "⚠️  No existing cask file found"
+          fi
+      
       - name: Compare versions
         id: version_check
         run: |
-          if [ "$latest_version" != "$current_version" ]; then
-            echo "Versions differ. Proceeding with action."
-            echo "new_version_found=true" >> $GITHUB_ENV
+          LATEST="${{ steps.fetch_version.outputs.version_num }}"
+          CURRENT="${{ steps.current_version.outputs.current_version }}"
+          FORCE="${{ github.event.inputs.force_update }}"
+          
+          if [ "$FORCE" == "true" ]; then
+            echo "🔨 Force update enabled. Proceeding regardless of version."
+            echo "should_update=true" >> $GITHUB_OUTPUT
+          elif [ "$LATEST" != "$CURRENT" ]; then
+            echo "✅ Versions differ ($CURRENT → $LATEST). Proceeding with signing."
+            echo "should_update=true" >> $GITHUB_OUTPUT
           else
-            echo "Versions are the same. No action needed."
-            echo "new_version_found=false" >> $GITHUB_ENV
+            echo "✨ Versions are the same ($CURRENT). No action needed."
+            echo "💡 Use 'Force update' checkbox to update anyway."
+            echo "should_update=false" >> $GITHUB_OUTPUT
           fi
-        
-      - name: Release to Homebrew Private Tap
-        if: env.new_version_found == 'true'
+      
+      # ============================================
+      # CHECK IF ALREADY SIGNED
+      # ============================================
+      - name: Check if already signed
+        id: check_signed
+        if: steps.version_check.outputs.should_update == 'true'
+        run: |
+          VERSION="${{ steps.fetch_version.outputs.version }}"
+          FORCE="${{ github.event.inputs.force_update }}"
+          
+          if [ "$FORCE" == "true" ]; then
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "🔨 Force update: Will re-sign even if release exists"
+          elif gh release view "${VERSION}-signed" &>/dev/null; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "✅ Version ${VERSION} already signed"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "🔨 Version ${VERSION} needs signing"
+          fi
         env:
-          VERSION: ${{ env.latest_version }}
-          HOMEBREW_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        id: homebrew-releaser
-
-        # TODO: replace "ybeapps/homebrew-sourcegit" with "sourcegit-scm/homebrew-sourcegit"
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      # ============================================
+      # DELETE OLD RELEASE IF FORCE UPDATE
+      # ============================================
+      - name: Delete old signed release (force update)
+        if: steps.version_check.outputs.should_update == 'true' && github.event.inputs.force_update == 'true'
+        run: |
+          VERSION="${{ steps.fetch_version.outputs.version }}"
+          
+          if gh release view "${VERSION}-signed" &>/dev/null; then
+            echo "🗑️  Deleting existing signed release..."
+            gh release delete "${VERSION}-signed" --yes --cleanup-tag
+            echo "✅ Old release deleted"
+          else
+            echo "ℹ️  No existing release to delete"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      # ============================================
+      # DOWNLOAD AND SIGN (new workflow)
+      # ============================================
+      - name: Download SourceGit
+        if: steps.version_check.outputs.should_update == 'true' && steps.check_signed.outputs.exists == 'false'
+        run: |
+          VERSION="${{ steps.fetch_version.outputs.version }}"
+          VERSION_NUM="${{ steps.fetch_version.outputs.version_num }}"
+          
+          echo "📥 Downloading SourceGit ${VERSION}..."
+          
+          # Download the ARM64 version (works on Apple Silicon and Intel via Rosetta)
+          curl -L -o sourcegit.zip \
+            "https://github.com/sourcegit-scm/sourcegit/releases/download/${VERSION}/sourcegit_${VERSION_NUM}.osx-arm64.zip"
+          
+          # Extract
+          unzip -q sourcegit.zip
+          
+          ls -la
+          
+          if [ ! -d "SourceGit.app" ]; then
+            echo "❌ SourceGit.app not found after extraction"
+            ls -la
+            exit 1
+          fi
+          
+          echo "✅ SourceGit.app extracted and ready for signing"
+      
+      - name: Import signing certificate
+        if: steps.version_check.outputs.should_update == 'true' && steps.check_signed.outputs.exists == 'false'
+        env:
+          CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          echo "🔐 Setting up keychain..."
+          
+          # Create temporary keychain
+          security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security set-keychain-settings -t 3600 -u build.keychain
+          
+          # Decode and import certificate
+          echo "$CERTIFICATE_BASE64" | base64 --decode > certificate.p12
+          security import certificate.p12 \
+            -k build.keychain \
+            -P "$CERTIFICATE_PASSWORD" \
+            -T /usr/bin/codesign \
+            -T /usr/bin/productsign
+          
+          # Allow codesign access
+          security set-key-partition-list -S apple-tool:,apple: \
+            -s -k "$KEYCHAIN_PASSWORD" build.keychain
+          
+          # List identities to verify
+          echo "✅ Available identities:"
+          security find-identity -v
+      
+      - name: Sign application
+        if: steps.version_check.outputs.should_update == 'true' && steps.check_signed.outputs.exists == 'false'
+        env:
+          APPLE_IDENTITY: ${{ secrets.APPLE_IDENTITY }}
+        run: |
+          echo "✍️  Signing SourceGit.app..."
+          
+          # Create entitlements file
+          cat > entitlements.plist << 'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>com.apple.security.cs.allow-jit</key>
+              <true/>
+              <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+              <true/>
+              <key>com.apple.security.cs.disable-library-validation</key>
+              <true/>
+          </dict>
+          </plist>
+          EOF
+          
+          # Sign all frameworks and dylibs first
+          find SourceGit.app/Contents -type f \( -name "*.dylib" -o -name "*.framework" \) -exec \
+            codesign --force --sign "$APPLE_IDENTITY" \
+            --options runtime \
+            --timestamp {} \; 2>/dev/null || true
+          
+          # Sign all executables
+          find SourceGit.app/Contents/MacOS -type f -perm +111 -exec \
+            codesign --force --sign "$APPLE_IDENTITY" \
+            --options runtime \
+            --entitlements entitlements.plist \
+            --timestamp {} \;
+          
+          # Sign the app bundle itself
+          codesign --force --sign "$APPLE_IDENTITY" \
+            --options runtime \
+            --entitlements entitlements.plist \
+            --timestamp \
+            --deep \
+            SourceGit.app
+          
+          # Verify signature (this will show "Unnotarized" which is expected)
+          echo "✅ Verifying signature..."
+          codesign --verify --deep --strict --verbose=2 SourceGit.app
+          
+          # Check signing status (will fail with "rejected" because not notarized yet - that's OK!)
+          echo "📝 Checking signing status (will show 'Unnotarized' - this is expected):"
+          spctl --assess --type execute --verbose SourceGit.app || echo "⚠️  Not notarized yet (expected at this stage)"
+          
+          echo "✅ Signing complete! Moving to notarization..."
+          
+      - name: Create DMG
+        if: steps.version_check.outputs.should_update == 'true' && steps.check_signed.outputs.exists == 'false'
+        env:
+          APPLE_IDENTITY: ${{ secrets.APPLE_IDENTITY }}
+        run: |
+          VERSION="${{ steps.fetch_version.outputs.version }}"
+          
+          echo "📦 Creating DMG..."
+          hdiutil create -volname "SourceGit" \
+            -srcfolder SourceGit.app \
+            -ov -format UDZO \
+            SourceGit-${VERSION}-signed.dmg
+          
+          # Sign the DMG
+          codesign --force --sign "$APPLE_IDENTITY" \
+            --timestamp \
+            SourceGit-${VERSION}-signed.dmg
+          
+          # Verify DMG signature
+          codesign --verify --verbose SourceGit-${VERSION}-signed.dmg
+      
+      - name: Notarize application
+        if: steps.version_check.outputs.should_update == 'true' && steps.check_signed.outputs.exists == 'false'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          VERSION="${{ steps.fetch_version.outputs.version }}"
+          
+          echo "🍎 Submitting for notarization..."
+          xcrun notarytool submit SourceGit-${VERSION}-signed.dmg \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait \
+            --timeout 30m
+          
+          echo "📎 Stapling notarization ticket..."
+          xcrun stapler staple SourceGit-${VERSION}-signed.dmg
+          
+          echo "✅ Verifying notarization..."
+          spctl --assess --type open --context context:primary-signature \
+            -vv SourceGit-${VERSION}-signed.dmg
+          
+          echo "✅ Notarization complete!"
+      
+      - name: Calculate SHA256
+        if: steps.version_check.outputs.should_update == 'true' && steps.check_signed.outputs.exists == 'false'
+        id: sha256
+        run: |
+          VERSION="${{ steps.fetch_version.outputs.version }}"
+          SHA256=$(shasum -a 256 SourceGit-${VERSION}-signed.dmg | cut -d' ' -f1)
+          echo "sha256=$SHA256" >> $GITHUB_OUTPUT
+          echo "📝 SHA256: $SHA256"
+      
+      - name: Create GitHub Release
+        if: steps.version_check.outputs.should_update == 'true' && steps.check_signed.outputs.exists == 'false'
+        uses: softprops/action-gh-release@v1
+        with:
+          files: SourceGit-${{ steps.fetch_version.outputs.version }}-signed.dmg
+          tag_name: ${{ steps.fetch_version.outputs.version }}-signed
+          name: SourceGit ${{ steps.fetch_version.outputs.version }} (Signed & Notarized)
+          body: |
+            **Signed and notarized build of SourceGit ${{ steps.fetch_version.outputs.version }}**
+            
+            - ✅ Code signed with Developer ID
+            - ✅ Notarized by Apple
+            - ✅ No `--no-quarantine` flag needed
+            
+            Original release: https://github.com/sourcegit-scm/sourcegit/releases/tag/${{ steps.fetch_version.outputs.version }}
+            
+            SHA256: `${{ steps.sha256.outputs.sha256 }}`
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      # ============================================
+      # UPDATE CASK (from old workflow)
+      # ============================================
+      - name: Get SHA256 from existing release
+        if: steps.version_check.outputs.should_update == 'true' && steps.check_signed.outputs.exists == 'true'
+        id: existing_sha
+        run: |
+          VERSION="${{ steps.fetch_version.outputs.version }}"
+          
+          # Download the DMG to calculate SHA
+          curl -L -o temp.dmg \
+            "https://github.com/ybeapps/homebrew-sourcegit/releases/download/${VERSION}-signed/SourceGit-${VERSION}-signed.dmg"
+          
+          SHA256=$(shasum -a 256 temp.dmg | cut -d' ' -f1)
+          echo "sha256=$SHA256" >> $GITHUB_OUTPUT
+          echo "📝 Existing SHA256: $SHA256"
+          rm temp.dmg
+      
+      - name: Update cask formula using brew bump-cask-pr
+        if: steps.version_check.outputs.should_update == 'true'
+        env:
+          VERSION: ${{ steps.fetch_version.outputs.version_num }}
+          HOMEBREW_GITHUB_API_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           echo "=== Adding tap ==="
           brew tap ybeapps/homebrew-sourcegit
-
           TAP_REPO=$(brew --repository ybeapps/homebrew-sourcegit)
-          echo "Tap repository: $TAP_REPO"
-
-          echo "=== Bumping cask ==="
-          brew bump-cask-pr --no-fork --version $VERSION --no-browse --message "Update SourceGit to version $VERSION" --write-only --commit sourcegit
-
-          cd "$TAP_REPO"
-
+          echo "📂 Tap repository: $TAP_REPO"
+          
+          echo "=== Updating cask with signed version ==="
+          # First, update the cask file to point to our signed release
+          SHA256="${{ steps.sha256.outputs.sha256 || steps.existing_sha.outputs.sha256 }}"
+          VERSION_TAG="${{ steps.fetch_version.outputs.version }}"
+          
+          cat > "$TAP_REPO/Casks/sourcegit.rb" << EOF
+          cask "sourcegit" do
+            version "${VERSION}"
+            sha256 "${SHA256}"
+            
+            url "https://github.com/ybeapps/homebrew-sourcegit/releases/download/${VERSION_TAG}-signed/SourceGit-${VERSION_TAG}-signed.dmg"
+            name "SourceGit"
+            desc "Git GUI client"
+            homepage "https://github.com/sourcegit-scm/sourcegit"
+            
+            # Signed and notarized - no --no-quarantine needed!
+            app "SourceGit.app"
+            
+            zap trash: [
+              "~/Library/Application Support/SourceGit",
+              "~/Library/Saved Application State/com.sourcegit.app.savedState",
+            ]
+          end
+          EOF
+          
+          echo "✅ Updated cask formula:"
+          cat "$TAP_REPO/Casks/sourcegit.rb"
+          
           # Commit the changes in tap repo
+          cd "$TAP_REPO"
           echo "=== Committing in tap repo ==="
           git add Casks/sourcegit.rb
-
+          
           if git diff --cached --quiet; then
-            echo "⚠️ No changes to commit"
+            echo "⚠️  No changes to commit"
           else
-            git commit -m "Update SourceGit to version $VERSION"
+            git config user.name "GitHub Actions Bot"
+            git config user.email "actions@github.com"
+            git commit -m "Update SourceGit to version $VERSION (signed & notarized)"
+            echo "✅ Committed changes"
           fi
           
           echo "=== Commit Debug ==="
@@ -81,21 +395,38 @@ jobs:
           git status
           echo "Last 5 commits:"
           git log --oneline -5
-          echo "Staged changes:"
-          git diff --cached --name-only
-          echo "Unstaged changes:"
-          git diff --name-only
-          echo "Untracked files:"
-          git ls-files --others --exclude-standard
-          echo
-
+          
           cd - # Go back to original directory
           
+          # Fetch and merge changes
           git remote add local-other "$TAP_REPO"
           git fetch local-other
           git reset --hard local-other/main
           
+          echo "=== Final push ==="
           git status
-          
           git push origin
           git push origin main
+          
+          echo "✅ Successfully updated homebrew tap!"
+      
+      - name: Cleanup
+        if: always()
+        run: |
+          security delete-keychain build.keychain 2>/dev/null || true
+          rm -f certificate.p12 entitlements.plist
+          echo "🧹 Cleanup complete"
+      
+      - name: Summary
+        if: steps.version_check.outputs.should_update == 'true'
+        run: |
+          VERSION="${{ steps.fetch_version.outputs.version }}"
+          echo "### ✅ Workflow Complete!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** $VERSION" >> $GITHUB_STEP_SUMMARY
+          echo "**Status:** Signed, notarized, and published" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Users can now install with:" >> $GITHUB_STEP_SUMMARY
+          echo '```bash' >> $GITHUB_STEP_SUMMARY
+          echo "brew install --cask ybeapps/sourcegit/sourcegit" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
