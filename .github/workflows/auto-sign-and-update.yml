@@ -24,7 +24,7 @@ jobs:
       - name: Checkout tap repo
         uses: actions/checkout@v4
         with:
-          token: ${{ secrets.PAT_TOKEN }}
+          token: ${{ secrets.GH_TOKEN }}
       
       - name: Get latest SourceGit release
         id: latest_release
@@ -258,7 +258,7 @@ jobs:
           git commit -m "Update SourceGit to ${VERSION} (signed & notarized)"
           git push
         env:
-          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
       
       - name: Cleanup
         if: always()
