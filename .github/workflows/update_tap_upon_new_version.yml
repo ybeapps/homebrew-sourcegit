@@ -138,25 +138,43 @@ jobs:
         run: |
           VERSION="${{ steps.fetch_version.outputs.version }}"
           VERSION_NUM="${{ steps.fetch_version.outputs.version_num }}"
-          
-          echo "📥 Downloading SourceGit ${VERSION}..."
-          
-          # Download the ARM64 version (works on Apple Silicon and Intel via Rosetta)
-          curl -L -o sourcegit.zip \
+
+          echo "📥 Downloading SourceGit ${VERSION} for both architectures..."
+
+          # Download ARM64 version
+          echo "📥 Downloading ARM64 version..."
+          curl -L -o sourcegit-arm64.zip \
             "https://github.com/sourcegit-scm/sourcegit/releases/download/${VERSION}/sourcegit_${VERSION_NUM}.osx-arm64.zip"
-          
-          # Extract
-          unzip -q sourcegit.zip
-          
-          ls -la
-          
-          if [ ! -d "SourceGit.app" ]; then
-            echo "❌ SourceGit.app not found after extraction"
-            ls -la
+
+          # Download x64 version
+          echo "📥 Downloading x64 version..."
+          curl -L -o sourcegit-x64.zip \
+            "https://github.com/sourcegit-scm/sourcegit/releases/download/${VERSION}/sourcegit_${VERSION_NUM}.osx-x64.zip"
+
+          # Extract ARM64
+          echo "📦 Extracting ARM64..."
+          mkdir -p arm64
+          unzip -q sourcegit-arm64.zip -d arm64
+
+          # Extract x64
+          echo "📦 Extracting x64..."
+          mkdir -p x64
+          unzip -q sourcegit-x64.zip -d x64
+
+          ls -la arm64/
+          ls -la x64/
+
+          if [ ! -d "arm64/SourceGit.app" ]; then
+            echo "❌ ARM64 SourceGit.app not found after extraction"
             exit 1
           fi
-          
-          echo "✅ SourceGit.app extracted and ready for signing"
+
+          if [ ! -d "x64/SourceGit.app" ]; then
+            echo "❌ x64 SourceGit.app not found after extraction"
+            exit 1
+          fi
+
+          echo "✅ Both ARM64 and x64 apps extracted and ready for signing"
       
       - name: Import signing certificate
         if: steps.version_check.outputs.should_update == 'true' && steps.check_signed.outputs.exists == 'false'
@@ -194,8 +212,8 @@ jobs:
         env:
           APPLE_IDENTITY: ${{ secrets.APPLE_IDENTITY }}
         run: |
-          echo "✍️  Signing SourceGit.app..."
-          
+          echo "✍️  Signing SourceGit apps for both architectures..."
+
           # Create entitlements file
           cat > entitlements.plist << 'EOF'
           <?xml version="1.0" encoding="UTF-8"?>
@@ -211,37 +229,43 @@ jobs:
           </dict>
           </plist>
           EOF
-          
-          # Sign all frameworks and dylibs first
-          find SourceGit.app/Contents -type f \( -name "*.dylib" -o -name "*.framework" \) -exec \
+
+          # Sign both architectures
+          for ARCH in arm64 x64; do
+            echo "✍️  Signing ${ARCH} app..."
+            APP_PATH="${ARCH}/SourceGit.app"
+
+            # Sign all frameworks and dylibs first
+            find ${APP_PATH}/Contents -type f \( -name "*.dylib" -o -name "*.framework" \) -exec \
+              codesign --force --sign "$APPLE_IDENTITY" \
+              --options runtime \
+              --timestamp {} \; 2>/dev/null || true
+
+            # Sign all executables
+            find ${APP_PATH}/Contents/MacOS -type f -perm +111 -exec \
+              codesign --force --sign "$APPLE_IDENTITY" \
+              --options runtime \
+              --entitlements entitlements.plist \
+              --timestamp {} \;
+
+            # Sign the app bundle itself
             codesign --force --sign "$APPLE_IDENTITY" \
-            --options runtime \
-            --timestamp {} \; 2>/dev/null || true
-          
-          # Sign all executables
-          find SourceGit.app/Contents/MacOS -type f -perm +111 -exec \
-            codesign --force --sign "$APPLE_IDENTITY" \
-            --options runtime \
-            --entitlements entitlements.plist \
-            --timestamp {} \;
-          
-          # Sign the app bundle itself
-          codesign --force --sign "$APPLE_IDENTITY" \
-            --options runtime \
-            --entitlements entitlements.plist \
-            --timestamp \
-            --deep \
-            SourceGit.app
-          
-          # Verify signature (this will show "Unnotarized" which is expected)
-          echo "✅ Verifying signature..."
-          codesign --verify --deep --strict --verbose=2 SourceGit.app
-          
-          # Check signing status (will fail with "rejected" because not notarized yet - that's OK!)
-          echo "📝 Checking signing status (will show 'Unnotarized' - this is expected):"
-          spctl --assess --type execute --verbose SourceGit.app || echo "⚠️  Not notarized yet (expected at this stage)"
-          
-          echo "✅ Signing complete! Moving to notarization..."
+              --options runtime \
+              --entitlements entitlements.plist \
+              --timestamp \
+              --deep \
+              ${APP_PATH}
+
+            # Verify signature
+            echo "✅ Verifying ${ARCH} signature..."
+            codesign --verify --deep --strict --verbose=2 ${APP_PATH}
+
+            # Check signing status
+            echo "📝 Checking ${ARCH} signing status (will show 'Unnotarized' - this is expected):"
+            spctl --assess --type execute --verbose ${APP_PATH} || echo "⚠️  Not notarized yet (expected at this stage)"
+          done
+
+          echo "✅ Both architectures signed! Moving to notarization..."
           
       - name: Create DMG
         if: steps.version_check.outputs.should_update == 'true' && steps.check_signed.outputs.exists == 'false'
@@ -249,20 +273,40 @@ jobs:
           APPLE_IDENTITY: ${{ secrets.APPLE_IDENTITY }}
         run: |
           VERSION="${{ steps.fetch_version.outputs.version }}"
-          
-          echo "📦 Creating DMG..."
+
+          echo "📦 Creating DMGs for both architectures..."
+
+          # Create ARM64 DMG
+          echo "📦 Creating ARM64 DMG..."
           hdiutil create -volname "SourceGit" \
-            -srcfolder SourceGit.app \
+            -srcfolder arm64/SourceGit.app \
             -ov -format UDZO \
-            SourceGit-${VERSION}-signed.dmg
-          
-          # Sign the DMG
+            SourceGit-${VERSION}-arm64-signed.dmg
+
+          # Sign the ARM64 DMG
           codesign --force --sign "$APPLE_IDENTITY" \
             --timestamp \
-            SourceGit-${VERSION}-signed.dmg
-          
-          # Verify DMG signature
-          codesign --verify --verbose SourceGit-${VERSION}-signed.dmg
+            SourceGit-${VERSION}-arm64-signed.dmg
+
+          # Verify ARM64 DMG signature
+          codesign --verify --verbose SourceGit-${VERSION}-arm64-signed.dmg
+
+          # Create x64 DMG
+          echo "📦 Creating x64 DMG..."
+          hdiutil create -volname "SourceGit" \
+            -srcfolder x64/SourceGit.app \
+            -ov -format UDZO \
+            SourceGit-${VERSION}-x64-signed.dmg
+
+          # Sign the x64 DMG
+          codesign --force --sign "$APPLE_IDENTITY" \
+            --timestamp \
+            SourceGit-${VERSION}-x64-signed.dmg
+
+          # Verify x64 DMG signature
+          codesign --verify --verbose SourceGit-${VERSION}-x64-signed.dmg
+
+          echo "✅ Both DMGs created and signed!"
       
       - name: Notarize application
         if: steps.version_check.outputs.should_update == 'true' && steps.check_signed.outputs.exists == 'false'
@@ -272,50 +316,81 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           VERSION="${{ steps.fetch_version.outputs.version }}"
-          
-          echo "🍎 Submitting for notarization..."
-          xcrun notarytool submit SourceGit-${VERSION}-signed.dmg \
+
+          echo "🍎 Submitting both DMGs for notarization..."
+
+          # Notarize ARM64 DMG
+          echo "🍎 Submitting ARM64 DMG for notarization..."
+          xcrun notarytool submit SourceGit-${VERSION}-arm64-signed.dmg \
             --apple-id "$APPLE_ID" \
             --password "$APPLE_APP_PASSWORD" \
             --team-id "$APPLE_TEAM_ID" \
             --wait \
             --timeout 30m
-          
-          echo "📎 Stapling notarization ticket..."
-          xcrun stapler staple SourceGit-${VERSION}-signed.dmg
-          
-          echo "✅ Verifying notarization..."
+
+          echo "📎 Stapling ARM64 notarization ticket..."
+          xcrun stapler staple SourceGit-${VERSION}-arm64-signed.dmg
+
+          echo "✅ Verifying ARM64 notarization..."
           spctl --assess --type open --context context:primary-signature \
-            -vv SourceGit-${VERSION}-signed.dmg
-          
-          echo "✅ Notarization complete!"
+            -vv SourceGit-${VERSION}-arm64-signed.dmg
+
+          # Notarize x64 DMG
+          echo "🍎 Submitting x64 DMG for notarization..."
+          xcrun notarytool submit SourceGit-${VERSION}-x64-signed.dmg \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait \
+            --timeout 30m
+
+          echo "📎 Stapling x64 notarization ticket..."
+          xcrun stapler staple SourceGit-${VERSION}-x64-signed.dmg
+
+          echo "✅ Verifying x64 notarization..."
+          spctl --assess --type open --context context:primary-signature \
+            -vv SourceGit-${VERSION}-x64-signed.dmg
+
+          echo "✅ Both DMGs notarized successfully!"
       
       - name: Calculate SHA256
         if: steps.version_check.outputs.should_update == 'true' && steps.check_signed.outputs.exists == 'false'
         id: sha256
         run: |
           VERSION="${{ steps.fetch_version.outputs.version }}"
-          SHA256=$(shasum -a 256 SourceGit-${VERSION}-signed.dmg | cut -d' ' -f1)
-          echo "sha256=$SHA256" >> $GITHUB_OUTPUT
-          echo "📝 SHA256: $SHA256"
+
+          # Calculate SHA256 for ARM64 DMG
+          SHA256_ARM64=$(shasum -a 256 SourceGit-${VERSION}-arm64-signed.dmg | cut -d' ' -f1)
+          echo "sha256_arm64=$SHA256_ARM64" >> $GITHUB_OUTPUT
+          echo "📝 ARM64 SHA256: $SHA256_ARM64"
+
+          # Calculate SHA256 for x64 DMG
+          SHA256_X64=$(shasum -a 256 SourceGit-${VERSION}-x64-signed.dmg | cut -d' ' -f1)
+          echo "sha256_x64=$SHA256_X64" >> $GITHUB_OUTPUT
+          echo "📝 x64 SHA256: $SHA256_X64"
       
       - name: Create GitHub Release
         if: steps.version_check.outputs.should_update == 'true' && steps.check_signed.outputs.exists == 'false'
         uses: softprops/action-gh-release@v1
         with:
-          files: SourceGit-${{ steps.fetch_version.outputs.version }}-signed.dmg
+          files: |
+            SourceGit-${{ steps.fetch_version.outputs.version }}-arm64-signed.dmg
+            SourceGit-${{ steps.fetch_version.outputs.version }}-x64-signed.dmg
           tag_name: ${{ steps.fetch_version.outputs.version }}-signed
           name: SourceGit ${{ steps.fetch_version.outputs.version }} (Signed & Notarized)
           body: |
             **Signed and notarized build of SourceGit ${{ steps.fetch_version.outputs.version }}**
-            
+
             - ✅ Code signed with Developer ID
             - ✅ Notarized by Apple
             - ✅ No `--no-quarantine` flag needed
-            
+            - 📦 Available for both Apple Silicon (ARM64) and Intel (x64) Macs
+
             Original release: https://github.com/sourcegit-scm/sourcegit/releases/tag/${{ steps.fetch_version.outputs.version }}
-            
-            SHA256: `${{ steps.sha256.outputs.sha256 }}`
+
+            **Checksums:**
+            - ARM64: `${{ steps.sha256.outputs.sha256_arm64 }}`
+            - x64: `${{ steps.sha256.outputs.sha256_x64 }}`
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       
@@ -327,15 +402,26 @@ jobs:
         id: existing_sha
         run: |
           VERSION="${{ steps.fetch_version.outputs.version }}"
-          
-          # Download the DMG to calculate SHA
-          curl -L -o temp.dmg \
-            "https://github.com/ybeapps/homebrew-sourcegit/releases/download/${VERSION}-signed/SourceGit-${VERSION}-signed.dmg"
-          
-          SHA256=$(shasum -a 256 temp.dmg | cut -d' ' -f1)
-          echo "sha256=$SHA256" >> $GITHUB_OUTPUT
-          echo "📝 Existing SHA256: $SHA256"
-          rm temp.dmg
+
+          # Download ARM64 DMG to calculate SHA
+          echo "📥 Downloading ARM64 DMG..."
+          curl -L -o temp-arm64.dmg \
+            "https://github.com/ybeapps/homebrew-sourcegit/releases/download/${VERSION}-signed/SourceGit-${VERSION}-arm64-signed.dmg"
+
+          SHA256_ARM64=$(shasum -a 256 temp-arm64.dmg | cut -d' ' -f1)
+          echo "sha256_arm64=$SHA256_ARM64" >> $GITHUB_OUTPUT
+          echo "📝 Existing ARM64 SHA256: $SHA256_ARM64"
+          rm temp-arm64.dmg
+
+          # Download x64 DMG to calculate SHA
+          echo "📥 Downloading x64 DMG..."
+          curl -L -o temp-x64.dmg \
+            "https://github.com/ybeapps/homebrew-sourcegit/releases/download/${VERSION}-signed/SourceGit-${VERSION}-x64-signed.dmg"
+
+          SHA256_X64=$(shasum -a 256 temp-x64.dmg | cut -d' ' -f1)
+          echo "sha256_x64=$SHA256_X64" >> $GITHUB_OUTPUT
+          echo "📝 Existing x64 SHA256: $SHA256_X64"
+          rm temp-x64.dmg
       
       - name: Update cask formula using brew bump-cask-pr
         if: steps.version_check.outputs.should_update == 'true'
@@ -350,22 +436,31 @@ jobs:
           
           echo "=== Updating cask with signed version ==="
           # First, update the cask file to point to our signed release
-          SHA256="${{ steps.sha256.outputs.sha256 || steps.existing_sha.outputs.sha256 }}"
+          SHA256_ARM64="${{ steps.sha256.outputs.sha256_arm64 || steps.existing_sha.outputs.sha256_arm64 }}"
+          SHA256_X64="${{ steps.sha256.outputs.sha256_x64 || steps.existing_sha.outputs.sha256_x64 }}"
           VERSION_TAG="${{ steps.fetch_version.outputs.version }}"
-          
+
           cat > "$TAP_REPO/Casks/sourcegit.rb" << EOF
           cask "sourcegit" do
             version "${VERSION}"
-            sha256 "${SHA256}"
-            
-            url "https://github.com/ybeapps/homebrew-sourcegit/releases/download/${VERSION_TAG}-signed/SourceGit-${VERSION_TAG}-signed.dmg"
+
+            on_arm do
+              sha256 "${SHA256_ARM64}"
+              url "https://github.com/ybeapps/homebrew-sourcegit/releases/download/${VERSION_TAG}-signed/SourceGit-${VERSION_TAG}-arm64-signed.dmg"
+            end
+
+            on_intel do
+              sha256 "${SHA256_X64}"
+              url "https://github.com/ybeapps/homebrew-sourcegit/releases/download/${VERSION_TAG}-signed/SourceGit-${VERSION_TAG}-x64-signed.dmg"
+            end
+
             name "SourceGit"
             desc "Git GUI client"
             homepage "https://github.com/sourcegit-scm/sourcegit"
-            
+
             # Signed and notarized - no --no-quarantine needed!
             app "SourceGit.app"
-            
+
             zap trash: [
               "~/Library/Application Support/SourceGit",
               "~/Library/Saved Application State/com.sourcegit.app.savedState",
