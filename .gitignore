@@ -1,0 +1,12 @@
+# Claude Code files
+.claude/
+.claude-*.md
+**/claude-*.md
+
+# macOS
+.DS_Store
+
+# Temporary files
+*.swp
+*.swo
+*~
