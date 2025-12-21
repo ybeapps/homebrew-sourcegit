@@ -2,12 +2,12 @@ cask "sourcegit" do
   version "2025.40"
 
   on_arm do
-    sha256 "851904bace76183689ed0c5717e26e7fde4d4fef72b358657c2b62957de92372"
+    sha256 "49a868c212162a3f7e59dabece3bce21d763787ab419e3bd725348c29ece1d45"
     url "https://github.com/ybeapps/homebrew-sourcegit/releases/download/v2025.40-signed/SourceGit-v2025.40-arm64-signed.dmg"
   end
 
   on_intel do
-    sha256 "pending"
+    sha256 "e1e5379b64189f4a24e07f75f247ab47a433fa4ddfd9e6ff9f530ebd6d2603a3"
     url "https://github.com/ybeapps/homebrew-sourcegit/releases/download/v2025.40-signed/SourceGit-v2025.40-x64-signed.dmg"
   end
 
