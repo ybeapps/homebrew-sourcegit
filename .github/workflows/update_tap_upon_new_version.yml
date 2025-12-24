@@ -442,20 +442,13 @@ jobs:
 
           cat > "$TAP_REPO/Casks/sourcegit.rb" << EOF
           cask "sourcegit" do
+            arch arm: "arm64", intel: "x64"
+
             version "${VERSION}"
+            sha256 arm:   "${SHA256_ARM64}",
+                   intel: "${SHA256_X64}"
 
-            on_arm do
-              sha256 "${SHA256_ARM64}"
-              url "https://github.com/ybeapps/homebrew-sourcegit/releases/download/v#{version}-signed/SourceGit-v#{version}-arm64-signed.dmg",
-                  verified: "github.com/ybeapps/homebrew-sourcegit/"
-            end
-
-            on_intel do
-              sha256 "${SHA256_X64}"
-              url "https://github.com/ybeapps/homebrew-sourcegit/releases/download/v#{version}-signed/SourceGit-v#{version}-x64-signed.dmg",
-                  verified: "github.com/ybeapps/homebrew-sourcegit/"
-            end
-
+            url "https://github.com/ybeapps/homebrew-sourcegit/releases/download/v#{version}-signed/SourceGit-v#{version}-#{arch}-signed.dmg"
             name "SourceGit"
             desc "Git GUI client"
             homepage "https://github.com/sourcegit-scm/sourcegit"
