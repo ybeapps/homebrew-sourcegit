@@ -516,24 +516,16 @@ jobs:
           HOMEBREW_GITHUB_API_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           echo "🍺 Updating official Homebrew cask..."
+          echo "🔄 Creating pull request to update to version $VERSION..."
 
-          # Check if the cask exists in official Homebrew yet
-          if brew info --cask sourcegit &>/dev/null; then
-            echo "✅ SourceGit cask found in official Homebrew"
-            echo "🔄 Creating pull request to update to version $VERSION..."
-
-            # Use brew bump-cask-pr to automatically create a PR
-            brew bump-cask-pr --version="$VERSION" sourcegit || {
-              echo "⚠️  Failed to create Homebrew PR. This might be because:"
-              echo "   - A PR already exists for this version"
-              echo "   - The version is already up to date"
-              echo "   - GitHub rate limits"
-              echo "Continuing anyway..."
-            }
-          else
-            echo "ℹ️  SourceGit not yet in official Homebrew"
-            echo "   Once PR #242242 is merged, this step will auto-update the official cask"
-          fi
+          # Use brew bump-cask-pr to automatically create a PR
+          brew bump-cask-pr --version="$VERSION" sourcegit || {
+            echo "⚠️  Failed to create Homebrew PR. This might be because:"
+            echo "   - A PR already exists for this version"
+            echo "   - The version is already up to date"
+            echo "   - GitHub rate limits"
+            echo "Continuing anyway..."
+          }
 
       - name: Cleanup
         if: always()
@@ -560,9 +552,5 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Installation:**" >> $GITHUB_STEP_SUMMARY
           echo '```bash' >> $GITHUB_STEP_SUMMARY
-          echo "# Via this tap:" >> $GITHUB_STEP_SUMMARY
-          echo "brew install --cask ybeapps/sourcegit/sourcegit" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "# Via official Homebrew (once PR is merged):" >> $GITHUB_STEP_SUMMARY
           echo "brew install --cask sourcegit" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
