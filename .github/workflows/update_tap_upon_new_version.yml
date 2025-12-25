@@ -513,7 +513,7 @@ jobs:
         if: steps.version_check.outputs.should_update == 'true'
         env:
           VERSION: ${{ steps.fetch_version.outputs.version_num }}
-          HOMEBREW_GITHUB_API_TOKEN: ${{ secrets.GH_TOKEN }}
+          HOMEBREW_GITHUB_API_TOKEN: ${{ secrets.PAT_FOR_BUMP_HOMEBREW }}
         run: |
           echo "🍺 Updating official Homebrew cask..."
           echo "🔄 Creating pull request to update to version $VERSION..."
