@@ -12,10 +12,14 @@ on:
         required: false
         type: boolean
         default: false
-  
-  # Check 4x daily (same as your old workflow)
+
+  # Check 4x daily (fallback while verifying repository_dispatch)
   schedule:
     - cron: '0 0,6,12,18 * * *'
+
+  # Triggered by SourceGit release workflow
+  repository_dispatch:
+    types: [new-sourcegit-release]
 
 jobs:
   check-and-sign:
@@ -39,21 +43,25 @@ jobs:
             # Manual trigger with specific version
             VERSION="${{ github.event.inputs.version }}"
             VERSION_NUM="${VERSION#v}"
+          elif [ -n "${{ github.event.client_payload.version }}" ]; then
+            # Triggered by repository_dispatch from release checker
+            VERSION="${{ github.event.client_payload.version }}"
+            VERSION_NUM="${VERSION#v}"
           else
             # Auto-detect latest version (scheduled run)
             latest_version=$(curl -sL -H "Authorization: token $GITHUB_TOKEN" \
               https://api.github.com/repos/sourcegit-scm/sourcegit/releases/latest | \
               jq -r ".tag_name")
-            
+
             if [ -z "$latest_version" ] || [ "$latest_version" == "null" ]; then
               echo "❌ Failed to fetch latest version from GitHub API."
               exit 1
             fi
-            
+
             VERSION="$latest_version"
             VERSION_NUM="${latest_version#v}"
           fi
-          
+
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "version_num=$VERSION_NUM" >> $GITHUB_OUTPUT
           echo "✅ Target version: $VERSION ($VERSION_NUM)"
@@ -554,3 +562,4 @@ jobs:
           echo '```bash' >> $GITHUB_STEP_SUMMARY
           echo "brew install --cask sourcegit" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
+🎉
