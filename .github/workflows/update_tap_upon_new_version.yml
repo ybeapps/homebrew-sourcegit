@@ -625,4 +625,3 @@ jobs:
           echo '```bash' >> $GITHUB_STEP_SUMMARY
           echo "brew install --cask sourcegit" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
-🎉
