@@ -575,7 +575,10 @@ jobs:
           echo "🔄 Creating pull request to update to version $VERSION..."
 
           # Use brew bump-cask-pr to automatically create a PR
-          brew bump-cask-pr --version="$VERSION" sourcegit || {
+          # Must be fully qualified: our own tap (added in the previous step) is also
+          # locally named "sourcegit" (ybeapps/homebrew-sourcegit -> ybeapps/sourcegit),
+          # which otherwise shadows the official cask and gets rejected as "untrusted tap".
+          brew bump-cask-pr --version="$VERSION" homebrew/cask/sourcegit || {
             echo "⚠️  Failed to create Homebrew PR. This might be because:"
             echo "   - A PR already exists for this version"
             echo "   - The version is already up to date"
